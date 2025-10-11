@@ -44,21 +44,14 @@ async function GetAllGrupoSet(req) {
 
 async function GetByIdGrupoSet(req) {
   try {
-    // OData -> req.data.ID ; alternativa query/params por si llaman como REST
-    const id =
-      req.data?.ID ??
-      req.req?.query?.ID ??
-      req.req?.params?.id ??
-      null;
-
+    const id = req.data?.ID ?? req.req?.query?.ID ?? req.req?.params?.id ?? null;
     if (!id) return { error: "Falta 'ID'" };
 
     const doc = await ZTGRUPOSET.findOne({ ID: String(id) }).lean();
     if (!doc) return { error: 'No se encontró registro' };
-
     return doc;
-  } catch (error) {
-    return { error: error.message };
+  } catch (e) {
+    return { error: e.message };
   }
 }
 
