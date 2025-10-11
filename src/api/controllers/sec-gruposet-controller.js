@@ -16,7 +16,7 @@ class GruposetController extends cds.ApplicationService {
     this.on('getall', async (req) => GetAllGrupoSet(req));
 
     //  detail by id
-    this.on('getbyid', (req) => GetByIdGrupoSet({ req }));
+   this.on('getbyid',   req => GetByIdGrupoSet(req)); 
 
     // POST insert (uno o varios)
     this.on('addone', async (req) => AddOneGrupoSet(req));
