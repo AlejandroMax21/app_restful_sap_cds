@@ -13,12 +13,11 @@ service SecurityGruposetRoute @(path:'/api/security/gruposet') {
   @path: 'getall'
   function getall() returns array of gruposet;
 
-  @Core.Description: 'GET gruposet by ID'
   @path: 'getbyid'
   function getbyid(ID: String) returns gruposet;
 
   @Core.Description: 'Crear uno o varios registros'
-  @path: 'create'
+  @path: 'addone'
   action addone(gruposet: array of gruposet) returns array of gruposet;
 
   @Core.Description: 'Actualizar un registro (llaves por query, cambios en body)'
