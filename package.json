@@ -1,0 +1,32 @@
+{
+  "name": "restful_sap_cds",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "private": true,
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.51.0",
+    "@sap/cds": "^9",
+    "cors": "^2.8.5",
+    "express": "^4",
+    "mongoose": "^8.19.1"
+  },
+  "files": [
+    "src"
+  ],
+  "devDependencies": {
+    "@cap-js/sqlite": "^2"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "dev": "cds watch",
+    "bat": "my-script.bat",
+    "build": "cds build --clean && npm run bat",
+    "build-docker": "cds build --clean"
+  },
+   "cds": {
+    "folders": {
+      "db": "src/api/models",
+      "srv": "src/api/routes"
+    }
+  }
+}
