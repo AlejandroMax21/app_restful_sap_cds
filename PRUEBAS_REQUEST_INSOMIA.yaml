@@ -1,0 +1,228 @@
+type: collection.insomnia.rest/5.0
+name: Interfaces web FIC
+meta:
+  id: wrk_467723d7ea1f490f905573f173dcb81d
+  created: 1760811597855
+  modified: 1760811597855
+  description: ""
+collection:
+  - url: "{{ _.BASE_URL }}"
+    name: Raíz
+    meta:
+      id: req_f232f28a9a96445eb84ab381372072b1
+      created: 1760811613186
+      modified: 1760812546740
+      isPrivate: false
+      description: ""
+      sortKey: -1760811613186
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/getall"
+    name: GET ALL
+    meta:
+      id: req_4bac741268b24566bdb5c8f8a5e2f192
+      created: 1760812585468
+      modified: 1760816273369
+      isPrivate: false
+      description: ""
+      sortKey: -1760720794506.5
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/getbyid(ID='999')"
+    name: GET BY ID
+    meta:
+      id: req_c996c1ace8874a3bad9edf33b719d782
+      created: 1760812824798
+      modified: 1760816749358
+      isPrivate: false
+      description: ""
+      sortKey: -1760675385166.75
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/addone"
+    name: ADD
+    meta:
+      id: req_8544f0e2ee554414ab01a7edba19d581
+      created: 1760813898351
+      modified: 1760816281251
+      isPrivate: false
+      description: ""
+      sortKey: -1760652680496.875
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "gruposet": [
+            {
+              "IDSOCIEDAD": 102,
+              "IDCEDI": 103,
+              "IDETIQUETA": "IdGruposOctubre",
+              "IDVALOR": "IdHola",
+              "IDGRUPOET": "IdGrupos",
+              "ID": "777",
+              "INFOAD": "FRANKY RIVERS",
+              "ACTIVO": true,
+              "BORRADO": false
+            }
+          ]
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/updateone?IDSOCIEDAD={{
+      _.IDSOCIEDAD }}&IDCEDI={{ _.IDCEDI }}&IDETIQUETA={{ _.IDETIQUETA
+      }}&IDVALOR={{ _.IDVALOR }}&IDGRUPOET={{ _.IDGRUPOET }}&ID={{ _.ID }}"
+    name: UPDATE
+    meta:
+      id: req_498f6aab01374cd0a9556759930ddb4e
+      created: 1760814031526
+      modified: 1760816250378
+      isPrivate: false
+      description: ""
+      sortKey: -1760641328161.9375
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "gruposet": {
+        		"INFOAD": "EDITADISIMO POR FRANKY",
+        		"ACTIVO": true,
+        		"BORRADO": true
+        	}
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/deleteone?IDSOCIEDAD={{
+      _.IDSOCIEDAD }}&IDCEDI={{ _.IDCEDI }}&IDETIQUETA={{ _.IDETIQUETA
+      }}&IDVALOR={{ _.IDVALOR }}&IDGRUPOET={{ _.IDGRUPOET }}&ID={{ _.ID }}"
+    name: BORRADO LOGICO
+    meta:
+      id: req_1a899ededec14af7a102d837917cdd18
+      created: 1760815951528
+      modified: 1760816242352
+      isPrivate: false
+      description: ""
+      sortKey: -1760635651994.4688
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/api/security/gruposet/deletehard?IDSOCIEDAD={{
+      _.IDSOCIEDAD }}&IDCEDI={{ _.IDCEDI }}&IDETIQUETA={{ _.IDETIQUETA
+      }}&IDVALOR={{ _.IDVALOR }}&IDGRUPOET={{ _.IDGRUPOET }}&ID={{ _.ID }}"
+    name: BORRADO FISICO
+    meta:
+      id: req_dc365adfe35546cb8b4a035b8f03e689
+      created: 1760816430300
+      modified: 1760816439059
+      isPrivate: false
+      description: ""
+      sortKey: -1760632813910.7344
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/11.6.1
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_8ee34520bd7f2dc78c8d2e036c6674f95f6b3f5d
+    created: 1760811597863
+    modified: 1760811597863
+environments:
+  name: Base Environment
+  meta:
+    id: env_8ee34520bd7f2dc78c8d2e036c6674f95f6b3f5d
+    created: 1760811597859
+    modified: 1760815664587
+    isPrivate: false
+  data:
+    BASE_URL: http://localhost:4004
+    IDSOCIEDAD: 102
+    IDCEDI: 103
+    IDETIQUETA: IdGruposOctubre
+    IDVALOR: IdHola
+    IDGRUPOET: IdGrupos
+    ID: "777"
