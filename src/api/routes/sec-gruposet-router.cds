@@ -1,35 +1,32 @@
 // src/api/routes/sec-gruposet-router.cds
+// == Router CDS con acción única `crud` (formato igual al de roles) ==
+
 using Security as mysec from '../models/sec_gruposet';
 
 // Vincula este router con tu controller JS
 @impl: 'src/api/controllers/sec-gruposet-controller.js'
-service SecurityGruposetRoute @(path:'/api/security/gruposet') {
+service SecurityGruposetRoute @(path: '/api/security/gruposet') {
 
-  // <- IMPORTANTE: No persistir ni exponer entity set
-  @cds.persistence.skip
-  entity gruposet as projection on mysec.ZTGRUPOSET;
+  // Exponemos la entidad como proyección (igual que en el ejemplo de roles)
+  @cds.autoexpose
+  entity ZTGRUPOSET as projection on mysec.ZTGRUPOSET;
 
-  @Core.Description: 'Obtener todos los registros'
-  @path: 'getall'
-  function getall() returns array of gruposet;
+  // Dispatcher único (CRUD)
+  @Core.Description: 'CRUD dispatcher para gruposet'
+  @path: 'crud'
+  action crud(
+    // Tipo de operación (p.ej. 'getAll', 'getById', 'create', 'updateone', 'deleteone', 'deletehard')
+    ProcessType : String,
 
-  @path: 'getbyid'
-  function getbyid(ID: String) returns gruposet;
+    // Clave compuesta de ZTGRUPOSET (todas opcionales; usa las que apliquen)
+    IDSOCIEDAD  : Integer,
+    IDCEDI      : Integer,
+    IDETIQUETA  : String,
+    IDVALOR     : String,
+    IDGRUPOET   : String,
+    ID          : String,
 
-  @Core.Description: 'Crear uno o varios registros'
-  @path: 'addone'
-  action addone(gruposet: array of gruposet) returns array of gruposet;
-
-  @Core.Description: 'Actualizar un registro (llaves por query, cambios en body)'
-  @path: 'updateone'
-  action updateone(gruposet: gruposet) returns gruposet;
-
-  @Core.Description: 'Borrado lógico (llaves por query)'
-  @path: 'deleteone'
-  action deleteone() returns gruposet;
-
-  // Opcional: borrado físico (llaves por query string)
-  @Core.Description: 'Borrado físico (llaves por query)'
-  @path: 'deletehard'
-  action deletehard() returns String;
+    // Carga útil flexible. Para create/update manda aquí el json del/los registros
+    data        : Map
+  ) returns ZTGRUPOSET;
 }

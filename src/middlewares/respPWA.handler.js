@@ -1,11 +1,13 @@
 const { whatTypeVarIs } = require('../helpers/variables');
 
+
 const BITACORA = () => {
 
     const bitacora = {
         success         : false,
         status          : 0,
         process         : '',
+        processType     : '',
         messageUSR      : '',
         messageDEV      : '',
         countData       : 0,
@@ -29,6 +31,7 @@ const DATA = () => {
         success         : false,
         status          : 0,
         process         : '',
+        processType     : '',
         principal       : false,
         secuencia       : 0,
         countDataReq    : 0,
@@ -47,83 +50,56 @@ const DATA = () => {
 };
 
 const AddMSG = (bitacora, data, tipo, status = 500, principal = false) => {
+  // Éxito / fallo
+  const isOK = (tipo === 'OK');
+  data.success        = (typeof data.success === 'boolean') ? data.success : isOK;
+  bitacora.success    = data.success; // <-- corrige el typo (antes decía .sucess)
 
-    if (tipo === 'OK') {
-        data.success = data.success     || true;
-        bitacora.success = data.sucess  || true;
-    } else {
-        data.success = data.success     || false;
-        bitacora.success = data.sucess  || false;
-    }
+  // Defaults de data
+  data.status         = data.status      || status;
+  data.process        = data.process     || 'No Especificado';
+  data.processType    = data.processType || 'No Especificado';
+  data.principal      = (data.principal === true);
+  data.method         = data.method      || 'No Especificado';
+  data.api            = data.api         || 'No Especificado';
+  data.secuencia      = (data.secuencia || 0) + 1;
 
-    data.status     = data.status       || status;
-    data.process    = data.process      || 'No Especificado';
-    data.principal  = data.principal    || principal;
-    data.method     = data.method       || 'No Especificado';
-    data.api        = data.api          || 'No Especificado';
+  // ⬇️ Propaga a la bitácora lo que se configuró en data
+  bitacora.process     = data.process;
+  bitacora.processType = data.processType;
 
-    data.secuencia++;
+  // Mensajes
+  if (data.messageDEV) { bitacora.messageDEV = data.messageDEV; bitacora.countMsgDEV++; }
+  if (data.messageUSR) { bitacora.messageUSR = data.messageUSR; bitacora.countMsgUSR++; }
 
-    if (data.messageDEV) {
-        bitacora.messageDEV = data.messageDEV;
-        bitacora.countMsgDEV++;
-    };
+  // Contadores de dataReq / dataRes
+  if (data.dataReq) {
+    if (whatTypeVarIs(data.dataReq) === 'isArray')   data.countDataReq = data.dataReq.length;
+    else if (whatTypeVarIs(data.dataReq) === 'isObject') data.countDataReq = 1;
+    else data.countDataReq = 0;
+    bitacora.countDataReq++;
+  }
 
-    if (data.messageUSR) {
-        bitacora.messageUSR = data.messageUSR;
-        bitacora.countMsgUSR++;
-    };
+  if (data.dataRes) {
+    if (whatTypeVarIs(data.dataRes) === 'isArray')   data.countDataRes = data.dataRes.length;
+    else if (whatTypeVarIs(data.dataRes) === 'isObject') data.countDataRes = 1;
+    else data.countDataRes = 0;
+    bitacora.countDataRes++;
+  }
 
-    if (data.dataReq) {
-        //data.countDataReq++;
-        //if(data.dataReq.length)
-        //     data.countDataReq = data.dataReq.length;
-        // else
-        //     data.countDataReq = 0;
+  // Archivos (si aplica)
+  if (data.file) {
+    if (whatTypeVarIs(data.file) === 'isArray')   data.countFile = data.file.length;
+    else if (whatTypeVarIs(data.file) === 'isObject') data.countFile = 1;
+    else data.countFile = 0;
+  }
 
-        if (whatTypeVarIs(data.dataReq)==='isArray')
-            data.countDataReq = data.dataReq.length;
-        else if (whatTypeVarIs(data.dataReq)==='isObject')
-            data.countDataReq = 1;
-        else if (whatTypeVarIs(data.dataReq)===null)
-            data.countDataReq = 0;
+  // Cierre
+  bitacora.status = data.status;
+  bitacora.data.push(data);
+  bitacora.countData++;
 
-        bitacora.countDataReq++;
-    }
-
-    if (data.dataRes) {
-        //data.countDataRes++;
-        //FIC: if length is not defined, it goes to else 
-        //because data is an object and not an array 
-        //if(data.dataRes.length)
-        //   data.countDataRes = data.dataRes.length;
-        //else
-        //    data.countDataRes = 1;   
-        
-        if (whatTypeVarIs(data.dataRes)==='isArray')
-            data.countDataRes = data.dataRes.length;
-        else if (whatTypeVarIs(data.dataRes)==='isObject')
-            data.countDataRes = 1;
-        else if (whatTypeVarIs(data.dataRes)===null)
-            data.countDataRes = 0;
-            
-        bitacora.countDataRes++;
-    };
-
-    if (data.file) {
-        if (whatTypeVarIs(data.countFile)==='isArray')
-            data.countFile = data.countFile.length;
-        else if (whatTypeVarIs(data.countFile)==='isObject')
-            data.countFile = 1;
-        else if (whatTypeVarIs(data.countFile)===null)
-            data.countFile = 0;
-    };
-
-    bitacora.status = data.status;
-    bitacora.data.push(data);
-    bitacora.countData++;
-
-    return bitacora;
+  return bitacora;
 };
 
 const OK = (bitacora) => {
@@ -135,6 +111,7 @@ const OK = (bitacora) => {
         success         : bitacora.success      || true,
         status          : bitacora.status       || 500,
         process         : bitacora.process      || 'No Especificado',
+        processType     : bitacora.processType  || 'No Especificado',
         messageUSR      : bitacora.messageUSR   || 'No Especificado',
         messageDEV      : bitacora.messageDEV   || 'No Especificado',
         countData       : bitacora.countData    || 0,
@@ -160,6 +137,7 @@ const FAIL = (bitacora) => {
         success         : bitacora.success      || false,
         status          : bitacora.status       || 500,
         process         : bitacora.process      || 'No Especificado',
+        processType     : bitacora.processType  || 'No Especificado',
         messageUSR      : bitacora.messageUSR   || 'No Especificado',
         messageDEV      : bitacora.messageDEV   || 'No Especificado',
         countData       : bitacora.countData    || 0,
