@@ -151,7 +151,7 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
         const PT = (paramsQuery?.ProcessType || '').toLowerCase();
 
         if (PT === 'getbyid') {
-          const id = paramsQuery?.ID;
+          const id = options?.body?.data?.ID ?? options?.body?.ID;
           if (!id) {
             data.status = 400;
             data.messageUSR = 'Falta parámetro ID';
@@ -264,7 +264,7 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=UpdateOne';
 
-    const filter = buildFilter(paramsQuery);
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
     for (const k of need) if (!filter[k]) {
       data.status = 400;
@@ -311,7 +311,7 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
 
 // DELETE lógico → 201
 async function DeleteOneGruposetMethod(bitacora, options = {}) {
-  const { paramsQuery } = options;
+  const { body } = options;
   const data = DATA();
   data.process = 'Borrado lógico de ZTGRUPOSET';
    
@@ -321,9 +321,16 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=DeleteOne';
 
-    const filter = buildFilter(paramsQuery);
+    if (!body || Object.keys(body).length === 0) {
+      data.status = 400;
+      data.messageUSR = 'El cuerpo (body) está vacío.';
+      data.messageDEV = 'No se recibieron datos en el body.';
+      throw new Error(data.messageDEV);
+    }
+
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
-    for (const k of need) if (!filter[k]) {
+    for (const k of need) if (!body[k]) {
       data.status = 400;
       data.messageUSR = `Falta parámetro de llave: ${k}`;
       data.messageDEV = `Query.${k} es requerido`;
@@ -367,7 +374,7 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
 
 // DELETE físico → 201
 async function DeleteHardGruposetMethod(bitacora, options = {}) {
-  const { paramsQuery } = options;
+  const {  body } = options;
   const data = DATA();
   data.processType = bitacora.processType;
   data.process = 'Borrado físico de ZTGRUPOSET';
@@ -376,9 +383,16 @@ async function DeleteHardGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=DeleteHard';
 
-    const filter = buildFilter(paramsQuery);
+    if (!body || Object.keys(body).length === 0) {
+      data.status = 400;
+      data.messageUSR = 'El cuerpo (body) está vacío.';
+      data.messageDEV = 'No se recibieron datos en el body.';
+      throw new Error(data.messageDEV);
+    }
+
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
-    for (const k of need) if (!filter[k]) {
+    for (const k of need) if (!body[k]) {
       data.status = 400;
       data.messageUSR = `Falta parámetro de llave: ${k}`;
       data.messageDEV = `Query.${k} es requerido`;
