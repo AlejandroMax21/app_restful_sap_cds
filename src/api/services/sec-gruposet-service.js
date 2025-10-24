@@ -236,7 +236,6 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
     data.messageUSR = '<<OK>> Alta realizada.';
     data.dataRes = JSON.parse(JSON.stringify(inserted));
     bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    bitacora.status = 201; // <-- refleja en bitácora para el dispatcher
     return OK(bitacora);
 
   } catch (error) {
@@ -294,7 +293,6 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     data.messageUSR = '<<OK>> Actualización realizada.';
     data.dataRes = JSON.parse(JSON.stringify(updated));
     bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    bitacora.status = 201; // <-- refleja en bitácora para el dispatcher
     return OK(bitacora);
 
   } catch (error) {
@@ -351,7 +349,6 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
     data.messageUSR = '<<OK>> Borrado lógico realizado.';
     data.dataRes = JSON.parse(JSON.stringify(updated));
     bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    bitacora.status = 201; // <-- refleja en bitácora para el dispatcher
     return OK(bitacora);
 
   } catch (error) {
@@ -396,7 +393,6 @@ async function DeleteHardGruposetMethod(bitacora, options = {}) {
     data.messageUSR = '<<OK>> Borrado físico realizado.';
     data.dataRes = { message: 'Eliminado' };
     bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    bitacora.status = 201; // <-- refleja en bitácora para el dispatcher
     return OK(bitacora);
 
   } catch (error) {

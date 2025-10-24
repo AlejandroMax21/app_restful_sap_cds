@@ -5,30 +5,31 @@ const router = express.Router();
 const dotenvXConfig = require('./src/config/dotenvXConfig');
 const mongoose = require('./src/config/connectToMongoDB');
 require('./src/api/models/mongodb/security/ztlabels');
+const errorHandler = require('./src/middlewares/errorHandler'); 
 
 module.exports = async (o) => {
-    try{
+  try {
+    let app = express();
+    app.express = express;
 
-        let app = express();
-        app.express = express;
+    // Captura JSON inválido ANTES que llegue a las rutas
+    app.use(express.json({ limit: '500kb' }));
+    app.use(cors());
 
-        app.use(express.json({limit: '500kb'}));
-        app.use(cors());
+    // Rutas
+    app.use('/api', router);
 
-        app.use('/api', router);
+    // Middleware de errores al final
+    app.use(errorHandler);
 
-        // app.use(dotenvXConfig.API_URL,router);
-        // app.get('/',(req,res)=>{
-        //     res.end(`API de CDS esta en ejecucion ${req.url}`)
-        // });
-        
-        o.app = app;
-        o.app.httpServer = await cds.server(o);
+    // Arranque del servidor CAP
+    o.app = app;
+    o.app.httpServer = await cds.server(o);
 
-        return  o.app.httpServer;
+    return o.app.httpServer;
 
-    }catch(error){
-        console.error('Error starting server',error);
-        process.exit(1);
-    }
+  } catch (error) {
+    console.error('Error starting server', error);
+    process.exit(1);
+  }
 };
