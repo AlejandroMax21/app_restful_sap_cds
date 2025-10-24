@@ -209,7 +209,11 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=Create';
 
-    let payload = body?.data;
+    let payload =
+      body?.data ||        // formato CAP: { data: {...} }
+      body?.gruposet ||    // formato Express clásico
+      body || null; 
+
     if (!payload) {
       data.status = 400;
       data.messageUSR = 'Falta body.data';

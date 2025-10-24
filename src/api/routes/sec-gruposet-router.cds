@@ -25,6 +25,9 @@ service SecurityGruposetRoute @(path: '/api/security/gruposet') {
     IDVALOR     : String,
     IDGRUPOET   : String,
     ID          : String,
+    INFOAD      : String,
+    ACTIVO      : Boolean,
+    BORRADO     : Boolean,
 
     // Carga útil flexible. Para create/update manda aquí el json del/los registros
     data        : Map
