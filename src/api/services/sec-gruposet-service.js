@@ -6,6 +6,10 @@ const ZTGRUPOSET = require('../models/mongodb/ztgruposet');
 // Bitácora / respuesta
 const { OK, FAIL, BITACORA, DATA, AddMSG } = require('../../middlewares/respPWA.handler');
 
+// Modular DB handlers for gruposet (single mongo module)
+const mongo = require('./gruposet/mongo');
+const { handleUnsupported } = require('./common/unsupportedDb');
+
 // ========================== Helpers ==========================
 const today = () => new Date().toISOString().slice(0, 10);
 const nowHHMMSS = () => new Date().toISOString().slice(11, 19);
@@ -37,7 +41,14 @@ async function crudGruposet(req) {
   let bitacora = BITACORA();
   let data = DATA();
 
-  const { ProcessType, LoggedUser, DBServer } = req.req.query || {};
+  // Manejar diferentes estructuras de req posibles en SAP CDS
+  const query = (req.req?.query || req.query || req._.query || {});
+  const { ProcessType, LoggedUser, DBServer } = query;
+
+  console.log(ProcessType, LoggedUser, DBServer);
+  
+  
+  const db = DBServer.toLowerCase();
 
   // Parámetros útiles para pasar a métodos locales
   const params = {
@@ -48,7 +59,7 @@ async function crudGruposet(req) {
 
   bitacora.loggedUser = LoggedUser;
   bitacora.processType = ProcessType;
-  bitacora.dbServer = DBServer || 'MongoDB';
+  bitacora.dbServer = DBServer;
 
   try {
     switch (ProcessType) {
@@ -57,7 +68,7 @@ async function crudGruposet(req) {
       case 'GetById':
       case 'GetAll':
       case 'GetSome': {
-        bitacora = await GetFiltersGruposetMethod(bitacora, params);
+        bitacora = await GetFiltersGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
@@ -66,26 +77,26 @@ async function crudGruposet(req) {
       case 'Create':
       case 'AddOne':
       case 'AddMany': {
-        bitacora = await AddManyGruposetMethod(bitacora, params);
+        bitacora = await AddManyGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'UpdateOne':
       case 'UpdateMany': {
-        bitacora = await UpdateOneGruposetMethod(bitacora, params);
+        bitacora = await UpdateOneGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'DeleteOne': {
-        bitacora = await DeleteOneGruposetMethod(bitacora, params);
+        bitacora = await DeleteOneGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'DeleteHard': {
-        bitacora = await DeleteHardGruposetMethod(bitacora, params);
+        bitacora = await DeleteHardGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
@@ -134,7 +145,7 @@ async function crudGruposet(req) {
 // ============================================================
 
 // GET (GetById / GetSome / GetAll) → 200
-async function GetFiltersGruposetMethod(bitacora, options = {}) {
+async function GetFiltersGruposetMethod(bitacora, options = {}, db) {
   const { paramsQuery } = options;
   const data = DATA();
   data.processType = bitacora.processType;
@@ -145,32 +156,10 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
     data.method  = 'GET';
     data.api     = '/crud?ProcessType=Get*';
 
-    switch ((bitacora.dbServer || 'MongoDB')) {
-      case 'MongoDB': {
-        let result;
-        const PT = (paramsQuery?.ProcessType || '').toLowerCase();
-
-        if (PT === 'getbyid') {
-          const id = options?.body?.data?.ID ?? options?.body?.ID;
-          if (!id) {
-            data.status = 400;
-            data.messageUSR = 'Falta parámetro ID';
-            data.messageDEV = 'Query.ID es requerido para GetById';
-            throw new Error(data.messageDEV);
-          }
-          result = await ZTGRUPOSET.findOne({ ID: String(id) }).lean();
-          if (!result) {
-            data.status = 404;
-            data.messageUSR = 'No se encontró registro';
-            data.messageDEV = `ZTGRUPOSET con ID='${id}' no existe`;
-            throw new Error(data.messageDEV);
-          }
-        } else if (PT === 'getsome') {
-          const filter = buildFilter(paramsQuery);
-          result = await ZTGRUPOSET.find(filter).lean();
-        } else {
-          result = await ZTGRUPOSET.find().lean();
-        }
+    switch (db) {
+      case 'mongodb': {
+        // Delegar la lectura a módulo Mongo
+        const result = await mongo.get(paramsQuery, options.body);
 
         data.status = 200; // GET -> 200
         data.messageUSR = '<<OK>> La extracción <<SI>> tuvo éxito.';
@@ -180,12 +169,20 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
         return OK(bitacora);
       }
 
-      default:
-        data.status = 500;
-        data.messageUSR = 'DB no soportada';
-        data.messageDEV = `DBServer no soportado: ${bitacora.dbServer}`;
-        bitacora = AddMSG(bitacora, data, 'FAIL');
-        return FAIL(bitacora);
+      case 'azure': {
+        // Simulación: Azure aún no implementada. Devolver OK en bitácora con mensaje aclaratorio.
+        data.status = 200;
+        data.messageUSR = '<<OK>> Simulación de lectura en Azure (DB no implementada).';
+        data.dataRes = [];
+        bitacora = AddMSG(bitacora, data, 'OK', 200, true);
+        bitacora.status = 200;
+        return OK(bitacora);
+      }
+
+      default: {
+        // Reutilizar manejador común para DB no soportadas
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
     }
   } catch (error) {
     data.status     = data.status || 500;
@@ -198,7 +195,7 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
 }
 
 // CREATE (uno o varios) → 201
-async function AddManyGruposetMethod(bitacora, options = {}) {
+async function AddManyGruposetMethod(bitacora, options = {}, db) {
   const { body } = options;
   const data = DATA();
   data.process = 'Alta de ZTGRUPOSET';
@@ -208,6 +205,10 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
     data.processType = bitacora.processType;
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=Create';
+
+    if (db !== 'mongodb' && db !== 'azure') {
+      return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+    }
 
     let payload =
       body?.data ||        // formato CAP: { data: {...} }
@@ -234,13 +235,30 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
       BORRADO:    d.BORRADO    ?? false
     }));
 
-    const inserted = await ZTGRUPOSET.insertMany(docs, { ordered: true });
+    switch (db) {
+      case 'mongodb': {
+        const inserted = await mongo.create(docs);
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Alta realizada.';
-    data.dataRes = JSON.parse(JSON.stringify(inserted));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Alta realizada.';
+        data.dataRes = JSON.parse(JSON.stringify(inserted));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+        // Simulación de creación en Azure
+        data.status = 201;
+        data.messageUSR = '<<OK>> Simulación de alta en Azure (DB no implementada).';
+        data.dataRes = { insertedCount: docs.length };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -253,7 +271,7 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
 }
 
 // UPDATE por llave compuesta (body parcial) → 201
-async function UpdateOneGruposetMethod(bitacora, options = {}) {
+async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
   const { paramsQuery, body } = options;
   const data = DATA();
   data.process = 'Actualización de ZTGRUPOSET';
@@ -263,6 +281,10 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     data.processType = bitacora.processType;
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=UpdateOne';
+
+    if (db !== 'mongodb' && db !== 'azure') {
+      return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+    }
 
     const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
@@ -285,19 +307,36 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     changes.HORAULTMOD  = nowHHMMSS();
     changes.USUARIOMOD  = bitacora.loggedUser || 'SYSTEM';
 
-    const updated = await ZTGRUPOSET.findOneAndUpdate(filter, changes, { new: true, upsert: false });
-    if (!updated) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro a actualizar';
-      data.messageDEV = 'findOneAndUpdate retornó null';
-      throw new Error(data.messageDEV);
-    }
+    switch (db) {
+      case 'mongodb': {
+        const updated = await mongo.update(filter, changes);
+        if (!updated) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro a actualizar';
+          data.messageDEV = 'findOneAndUpdate retornó null';
+          throw new Error(data.messageDEV);
+        }
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Actualización realizada.';
-    data.dataRes = JSON.parse(JSON.stringify(updated));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Actualización realizada.';
+        data.dataRes = JSON.parse(JSON.stringify(updated));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+        // Simulación de actualización en Azure
+        data.status = 201;
+        data.messageUSR = '<<OK>> Simulación de actualización en Azure (DB no implementada).';
+        data.dataRes = { message: 'Simulated update' };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -310,7 +349,7 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
 }
 
 // DELETE lógico → 201
-async function DeleteOneGruposetMethod(bitacora, options = {}) {
+async function DeleteOneGruposetMethod(bitacora, options = {}, db) {
   const { body } = options;
   const data = DATA();
   data.process = 'Borrado lógico de ZTGRUPOSET';
@@ -337,30 +376,44 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
       throw new Error(data.messageDEV);
     }
 
-    const updated = await ZTGRUPOSET.findOneAndUpdate(
-      filter,
-      {
-        ACTIVO: false,
-        BORRADO: true,
-        FECHAULTMOD: today(),
-        HORAULTMOD:  nowHHMMSS(),
-        USUARIOMOD:  bitacora.loggedUser || 'SYSTEM'
-      },
-      { new: true }
-    );
+    switch (db) {
+      case 'mongodb': {
+        const updates = {
+          ACTIVO: false,
+          BORRADO: true,
+          FECHAULTMOD: today(),
+          HORAULTMOD:  nowHHMMSS(),
+          USUARIOMOD:  bitacora.loggedUser || 'SYSTEM'
+        };
+        const updated = await mongo.logicalDelete(filter, updates);
 
-    if (!updated) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro para marcar como borrado';
-      data.messageDEV = 'findOneAndUpdate retornó null';
-      throw new Error(data.messageDEV);
+        if (!updated) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro para marcar como borrado';
+          data.messageDEV = 'findOneAndUpdate retornó null';
+          throw new Error(data.messageDEV);
+        }
+
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Borrado lógico realizado.';
+        data.dataRes = JSON.parse(JSON.stringify(updated));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+        // Simulación de borrado lógico en Azure
+        data.status = 201;
+        data.messageUSR = '<<OK>> Simulación de borrado lógico en Azure (DB no implementada).';
+        data.dataRes = { message: 'Simulated logical delete' };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
     }
-
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Borrado lógico realizado.';
-    data.dataRes = JSON.parse(JSON.stringify(updated));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -373,7 +426,7 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
 }
 
 // DELETE físico → 201
-async function DeleteHardGruposetMethod(bitacora, options = {}) {
+async function DeleteHardGruposetMethod(bitacora, options = {}, db) {
   const {  body } = options;
   const data = DATA();
   data.processType = bitacora.processType;
@@ -399,19 +452,36 @@ async function DeleteHardGruposetMethod(bitacora, options = {}) {
       throw new Error(data.messageDEV);
     }
 
-    const deleted = await ZTGRUPOSET.findOneAndDelete(filter);
-    if (!deleted) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro a eliminar';
-      data.messageDEV = 'findOneAndDelete retornó null';
-      throw new Error(data.messageDEV);
-    }
+    switch (db) {
+      case 'mongodb': {
+        const deleted = await mongo.hardDelete(filter);
+        if (!deleted) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro a eliminar';
+          data.messageDEV = 'findOneAndDelete retornó null';
+          throw new Error(data.messageDEV);
+        }
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Borrado físico realizado.';
-    data.dataRes = { message: 'Eliminado' };
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Borrado físico realizado.';
+        data.dataRes = { message: 'Eliminado' };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+        // Simulación de borrado físico en Azure
+        data.status = 201;
+        data.messageUSR = '<<OK>> Simulación de borrado físico en Azure (DB no implementada).';
+        data.dataRes = { message: 'Simulated hard delete' };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
