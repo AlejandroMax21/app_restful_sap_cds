@@ -6,10 +6,18 @@ const ZTGRUPOSET = require('../models/mongodb/ztgruposet');
 // Bitácora / respuesta
 const { OK, FAIL, BITACORA, DATA, AddMSG } = require('../../middlewares/respPWA.handler');
 
+// Modular DB handlers for gruposet (single mongo module)
+const mongo = require('./gruposet/mongo');
+const { handleUnsupported } = require('./common/unsupportedDb');
+
+const { connectToAzureCosmosDB } = require('../../config/connectToAzureCosmosDB');
+const dotenvXConfig = require('../../config/dotenvXConfig');
+
 // ========================== Helpers ==========================
 const today = () => new Date().toISOString().slice(0, 10);
 const nowHHMMSS = () => new Date().toISOString().slice(11, 19);
 
+// Construir filtro desde query o body para mongoDB
 function buildFilter(q = {}) {
   const f = {};
   if (q.IDSOCIEDAD != null) f.IDSOCIEDAD = parseInt(q.IDSOCIEDAD);
@@ -22,6 +30,62 @@ function buildFilter(q = {}) {
   if (q.BORRADO !== undefined)  f.BORRADO = (q.BORRADO === 'true' || q.BORRADO === true);
   return f;
 }
+
+// Construir consulta SQL para Cosmos DB desde query o body
+    function buildCosmosQuery(q = {}) {
+      let query = "SELECT * FROM c"; // 'c' es el alias estándar del contenedor
+      const parameters = [];
+      const conditions = [];
+
+      // Mapea tus filtros a parámetros SQL para evitar inyección SQL
+      if (q.IDSOCIEDAD != null) {
+        conditions.push("c.IDSOCIEDAD = @IDSOCIEDAD");
+        parameters.push({ name: "@IDSOCIEDAD", value: parseInt(q.IDSOCIEDAD) });
+      }
+      if (q.IDCEDI != null) {
+        conditions.push("c.IDCEDI = @IDCEDI");
+        parameters.push({ name: "@IDCEDI", value: parseInt(q.IDCEDI) });
+      }
+      if (q.IDETIQUETA) {
+        conditions.push("c.IDETIQUETA = @IDETIQUETA");
+        parameters.push({ name: "@IDETIQUETA", value: String(q.IDETIQUETA) });
+      }
+      
+      // --- CAMPOS QUE FALTABAN ---
+      if (q.IDVALOR) {
+        conditions.push("c.IDVALOR = @IDVALOR");
+        parameters.push({ name: "@IDVALOR", value: String(q.IDVALOR) });
+      }
+      if (q.IDGRUPOET) {
+        conditions.push("c.IDGRUPOET = @IDGRUPOET");
+        parameters.push({ name: "@IDGRUPOET", value: String(q.IDGRUPOET) });
+      }
+      if (q.ID) {
+        // Usamos 'c.id' porque así se llama en Cosmos (minúscula)
+        conditions.push("c.id = @ID"); 
+        parameters.push({ name: "@ID", value: String(q.ID) });
+      }
+      if (q.ACTIVO !== undefined) {
+        conditions.push("c.ACTIVO = @ACTIVO");
+        parameters.push({ name: "@ACTIVO", value: (q.ACTIVO === 'true' || q.ACTIVO === true) });
+      }
+      if (q.BORRADO !== undefined) {
+        conditions.push("c.BORRADO = @BORRADO");
+        parameters.push({ name: "@BORRADO", value: (q.BORRADO === 'true' || q.BORRADO === true) });
+      }
+      // --- FIN DE CAMPOS QUE FALTABAN ---
+
+      // Si hay condiciones, las une con 'AND'
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+
+      return {
+        query: query,
+        parameters: parameters
+      };
+    }
+
 const hasFullKey = f =>
   f.IDSOCIEDAD!=null && f.IDCEDI!=null && f.IDETIQUETA && f.IDVALOR && f.IDGRUPOET && f.ID;
 
@@ -37,7 +101,14 @@ async function crudGruposet(req) {
   let bitacora = BITACORA();
   let data = DATA();
 
-  const { ProcessType, LoggedUser, DBServer } = req.req.query || {};
+  // Manejar diferentes estructuras de req posibles en SAP CDS
+  const query = (req.req?.query || req.query || req._.query || {});
+  const { ProcessType, LoggedUser, DBServer } = query;
+
+  console.log(ProcessType, LoggedUser, DBServer);
+  
+  
+  const db = DBServer.toLowerCase();
 
   // Parámetros útiles para pasar a métodos locales
   const params = {
@@ -48,7 +119,7 @@ async function crudGruposet(req) {
 
   bitacora.loggedUser = LoggedUser;
   bitacora.processType = ProcessType;
-  bitacora.dbServer = DBServer || 'MongoDB';
+  bitacora.dbServer = DBServer;
 
   try {
     switch (ProcessType) {
@@ -57,7 +128,7 @@ async function crudGruposet(req) {
       case 'GetById':
       case 'GetAll':
       case 'GetSome': {
-        bitacora = await GetFiltersGruposetMethod(bitacora, params);
+        bitacora = await GetFiltersGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
@@ -66,26 +137,26 @@ async function crudGruposet(req) {
       case 'Create':
       case 'AddOne':
       case 'AddMany': {
-        bitacora = await AddManyGruposetMethod(bitacora, params);
+        bitacora = await AddManyGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'UpdateOne':
       case 'UpdateMany': {
-        bitacora = await UpdateOneGruposetMethod(bitacora, params);
+        bitacora = await UpdateOneGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'DeleteOne': {
-        bitacora = await DeleteOneGruposetMethod(bitacora, params);
+        bitacora = await DeleteOneGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
 
       case 'DeleteHard': {
-        bitacora = await DeleteHardGruposetMethod(bitacora, params);
+        bitacora = await DeleteHardGruposetMethod(bitacora, params, db);
         if (!bitacora.success) { bitacora.finalRes = true; throw bitacora; }
         break;
       }
@@ -134,7 +205,7 @@ async function crudGruposet(req) {
 // ============================================================
 
 // GET (GetById / GetSome / GetAll) → 200
-async function GetFiltersGruposetMethod(bitacora, options = {}) {
+async function GetFiltersGruposetMethod(bitacora, options = {}, db) {
   const { paramsQuery } = options;
   const data = DATA();
   data.processType = bitacora.processType;
@@ -145,32 +216,10 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
     data.method  = 'GET';
     data.api     = '/crud?ProcessType=Get*';
 
-    switch ((bitacora.dbServer || 'MongoDB')) {
-      case 'MongoDB': {
-        let result;
-        const PT = (paramsQuery?.ProcessType || '').toLowerCase();
-
-        if (PT === 'getbyid') {
-          const id = paramsQuery?.ID;
-          if (!id) {
-            data.status = 400;
-            data.messageUSR = 'Falta parámetro ID';
-            data.messageDEV = 'Query.ID es requerido para GetById';
-            throw new Error(data.messageDEV);
-          }
-          result = await ZTGRUPOSET.findOne({ ID: String(id) }).lean();
-          if (!result) {
-            data.status = 404;
-            data.messageUSR = 'No se encontró registro';
-            data.messageDEV = `ZTGRUPOSET con ID='${id}' no existe`;
-            throw new Error(data.messageDEV);
-          }
-        } else if (PT === 'getsome') {
-          const filter = buildFilter(paramsQuery);
-          result = await ZTGRUPOSET.find(filter).lean();
-        } else {
-          result = await ZTGRUPOSET.find().lean();
-        }
+    switch (db) {
+      case 'mongodb': {
+        // Delegar la lectura a módulo Mongo
+        const result = await mongo.get(paramsQuery, options.body);
 
         data.status = 200; // GET -> 200
         data.messageUSR = '<<OK>> La extracción <<SI>> tuvo éxito.';
@@ -180,12 +229,42 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
         return OK(bitacora);
       }
 
-      default:
-        data.status = 500;
-        data.messageUSR = 'DB no soportada';
-        data.messageDEV = `DBServer no soportado: ${bitacora.dbServer}`;
-        bitacora = AddMSG(bitacora, data, 'FAIL');
-        return FAIL(bitacora);
+      case 'azure': {
+              // 1. Obtener el contenedor
+              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+
+              // --- INICIO DE CORRECCIÓN ---
+              // 2. Determinar el objeto de filtro real (puede estar anidado)
+              //    Tu JSON es { "data": { "ID": "111" } }
+              //    Pero buildCosmosQuery espera { "ID": "111" }
+              const filterData = options.body?.data || options.body; 
+              
+              // 3. CORRECCIÓN: Usar 'filterData' en lugar de 'options.body'
+              const querySpec = buildCosmosQuery(filterData);
+              // --- FIN DE CORRECCIÓN ---
+
+              // 4. Ejecutar la consulta
+              const { resources } = await container.items.query(querySpec).fetchAll();
+              
+              // 5. Manejar la respuesta (esto ya estaba bien)
+              if (bitacora.processType === 'GetById') {
+                  data.dataRes = resources[0] || null; 
+                  data.messageUSR = resources.length > 0 ? '<<OK>> Extracción exitosa.' : '<<OK>> No se encontró el registro.';
+              } else {
+                  data.dataRes = resources; 
+                  data.messageUSR = '<<OK>> Extracción de Azure Cosmos DB exitosa.';
+              }
+              
+              data.status = 200;
+              bitacora = AddMSG(bitacora, data, 'OK', 200, true);
+              bitacora.status = 200;
+              return OK(bitacora);
+            }
+
+      default: {
+        // Reutilizar manejador común para DB no soportadas
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
     }
   } catch (error) {
     data.status     = data.status || 500;
@@ -198,7 +277,7 @@ async function GetFiltersGruposetMethod(bitacora, options = {}) {
 }
 
 // CREATE (uno o varios) → 201
-async function AddManyGruposetMethod(bitacora, options = {}) {
+async function AddManyGruposetMethod(bitacora, options = {}, db) {
   const { body } = options;
   const data = DATA();
   data.process = 'Alta de ZTGRUPOSET';
@@ -209,7 +288,15 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=Create';
 
-    let payload = body?.data;
+    if (db !== 'mongodb' && db !== 'azure') {
+      return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+    }
+
+    let payload =
+      body?.data ||        // formato CAP: { data: {...} }
+      body?.gruposet ||    // formato Express clásico
+      body || null; 
+
     if (!payload) {
       data.status = 400;
       data.messageUSR = 'Falta body.data';
@@ -230,13 +317,49 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
       BORRADO:    d.BORRADO    ?? false
     }));
 
-    const inserted = await ZTGRUPOSET.insertMany(docs, { ordered: true });
+    switch (db) {
+      case 'mongodb': {
+        const inserted = await mongo.create(docs);
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Alta realizada.';
-    data.dataRes = JSON.parse(JSON.stringify(inserted));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Alta realizada.';
+        data.dataRes = JSON.parse(JSON.stringify(inserted));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+              // 1. Obtener el contenedor
+              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+
+              // 2. 'docs' ya es un array de objetos listos para insertar
+              // (Asegúrate de que tus documentos tengan un campo 'id' único)
+              const promises = docs.map(doc => {
+                // Importante: Cosmos usa 'id' (minúscula) como identificador único.
+                // Si tu 'ID' (mayúscula) es el ID único, mapéalo.
+                if (doc.ID && !doc.id) {
+                  doc.id = doc.ID;
+                }
+                return container.items.create(doc);
+              });
+              
+              // 3. Esperar a que todas las promesas de creación terminen
+              const results = await Promise.all(promises);
+              
+              // 4. Extraer los items creados de la respuesta
+              const createdItems = results.map(r => r.resource);
+
+              data.status = 201;
+              data.messageUSR = '<<OK>> Alta realizada en Azure Cosmos DB.';
+              data.dataRes = createdItems;
+              bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+              return OK(bitacora);
+            }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -249,7 +372,7 @@ async function AddManyGruposetMethod(bitacora, options = {}) {
 }
 
 // UPDATE por llave compuesta (body parcial) → 201
-async function UpdateOneGruposetMethod(bitacora, options = {}) {
+async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
   const { paramsQuery, body } = options;
   const data = DATA();
   data.process = 'Actualización de ZTGRUPOSET';
@@ -260,7 +383,11 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=UpdateOne';
 
-    const filter = buildFilter(paramsQuery);
+    if (db !== 'mongodb' && db !== 'azure') {
+      return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+    }
+
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
     for (const k of need) if (!filter[k]) {
       data.status = 400;
@@ -281,19 +408,83 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
     changes.HORAULTMOD  = nowHHMMSS();
     changes.USUARIOMOD  = bitacora.loggedUser || 'SYSTEM';
 
-    const updated = await ZTGRUPOSET.findOneAndUpdate(filter, changes, { new: true, upsert: false });
-    if (!updated) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro a actualizar';
-      data.messageDEV = 'findOneAndUpdate retornó null';
-      throw new Error(data.messageDEV);
-    }
+    switch (db) {
+      case 'mongodb': {
+        const updated = await mongo.update(filter, changes);
+        if (!updated) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro a actualizar';
+          data.messageDEV = 'findOneAndUpdate retornó null';
+          throw new Error(data.messageDEV);
+        }
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Actualización realizada.';
-    data.dataRes = JSON.parse(JSON.stringify(updated));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Actualización realizada.';
+        data.dataRes = JSON.parse(JSON.stringify(updated));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+              // 1. Obtener el contenedor (Igual)
+              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+
+              // 2. Obtener el filtro (Igual)
+              // filter = { IDSOCIEDAD: 1005, IDCEDI: 1006, IDETIQUETA: "ETIQUETA JESUS", ... }
+              const filter = buildFilter(body); 
+
+              // 3. Obtener llaves (Igual)
+              const docId = filter.ID;
+              const partitionKey = filter.ID; // Usando /id como clave de partición
+
+              if (!docId || partitionKey === undefined) {
+                throw new Error('Se requiere el "id" del documento y su "Partition Key".');
+              }
+
+              // 4. Leer el item (Igual)
+              const { resource: currentItem } = await container.item(docId, partitionKey).read();
+
+              // 5. Manejar "No Encontrado" (Igual)
+              if (!currentItem) {
+                data.status = 404;
+                data.messageUSR = 'No se encontró registro a actualizar';
+                data.messageDEV = 'Item not found in Cosmos DB';
+                throw new Error(data.messageDEV);
+              }
+
+              // 6. =========== NUEVO: VALIDACIÓN ESTRICTA ===========
+              // Comparamos todos los campos del filtro contra el documento de la BD
+              for (const key in filter) {
+                // Comparamos los valores
+                // Tu buildFilter ya convierte los tipos (parseInt, String), 
+                // así que la comparación (===) debería ser segura.
+                if (currentItem[key] !== filter[key]) {
+                  data.status = 404; // 404 (No encontrado) o 412 (Falla de precondición)
+                  data.messageUSR = 'No se encontró el registro con los criterios exactos.';
+                  data.messageDEV = `Falla de precondición: El campo '${key}' no coincide. (DB: '${currentItem[key]}' vs Solicitud: '${filter[key]}')`;
+                  throw new Error(data.messageDEV);
+                }
+              }
+              // =======================================================
+
+              // 7. Fusionar cambios (Igual)
+              const itemToUpdate = { ...currentItem, ...changes };
+
+              // 8. Reemplazar item (Igual)
+              const { resource: updatedItem } = await container.item(docId, partitionKey).replace(itemToUpdate);
+
+              // 9. Devolver respuesta (Igual)
+              data.status = 201;
+              data.messageUSR = '<<OK>> Actualización realizada en Azure Cosmos DB.';
+              data.dataRes = updatedItem;
+              bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+              return OK(bitacora);
+            }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -306,8 +497,8 @@ async function UpdateOneGruposetMethod(bitacora, options = {}) {
 }
 
 // DELETE lógico → 201
-async function DeleteOneGruposetMethod(bitacora, options = {}) {
-  const { paramsQuery } = options;
+async function DeleteOneGruposetMethod(bitacora, options = {}, db) {
+  const { body } = options;
   const data = DATA();
   data.process = 'Borrado lógico de ZTGRUPOSET';
    
@@ -317,39 +508,114 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=DeleteOne';
 
-    const filter = buildFilter(paramsQuery);
+    if (!body || Object.keys(body).length === 0) {
+      data.status = 400;
+      data.messageUSR = 'El cuerpo (body) está vacío.';
+      data.messageDEV = 'No se recibieron datos en el body.';
+      throw new Error(data.messageDEV);
+    }
+
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
-    for (const k of need) if (!filter[k]) {
+    for (const k of need) if (!body[k]) {
       data.status = 400;
       data.messageUSR = `Falta parámetro de llave: ${k}`;
       data.messageDEV = `Query.${k} es requerido`;
       throw new Error(data.messageDEV);
     }
 
-    const updated = await ZTGRUPOSET.findOneAndUpdate(
-      filter,
-      {
-        ACTIVO: false,
-        BORRADO: true,
-        FECHAULTMOD: today(),
-        HORAULTMOD:  nowHHMMSS(),
-        USUARIOMOD:  bitacora.loggedUser || 'SYSTEM'
-      },
-      { new: true }
-    );
+    switch (db) {
+      case 'mongodb': {
+        const updates = {
+          ACTIVO: false,
+          BORRADO: true,
+          FECHAULTMOD: today(),
+          HORAULTMOD:  nowHHMMSS(),
+          USUARIOMOD:  bitacora.loggedUser || 'SYSTEM'
+        };
+        const updated = await mongo.logicalDelete(filter, updates);
 
-    if (!updated) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro para marcar como borrado';
-      data.messageDEV = 'findOneAndUpdate retornó null';
-      throw new Error(data.messageDEV);
+        if (!updated) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro para marcar como borrado';
+          data.messageDEV = 'findOneAndUpdate retornó null';
+          throw new Error(data.messageDEV);
+        }
+
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Borrado lógico realizado.';
+        data.dataRes = JSON.parse(JSON.stringify(updated));
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+              // 1. Obtener el contenedor
+              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+
+              // 2. Obtener el filtro
+              const filter = buildFilter(body);
+
+              // 3. Obtener 'id' y 'Partition Key'
+              const docId = filter.ID;
+              const partitionKey = filter.ID; // Corregido a /id
+
+              if (!docId || partitionKey === undefined) {
+                throw new Error('Para actualizar/borrar en Cosmos se requiere el "id" del documento y su "Partition Key".');
+              }
+
+              // 4. Leer el item actual
+              const { resource: currentItem } = await container.item(docId, partitionKey).read();
+              
+              // 5. Manejar "No Encontrado"
+              if (!currentItem) {
+                data.status = 404;
+                data.messageUSR = 'No se encontró registro para marcar como borrado';
+                data.messageDEV = 'Item not found in Cosmos DB';
+                throw new Error(data.messageDEV);
+              }
+
+              // 6. VALIDACIÓN ESTRICTA
+              for (const key in filter) {
+                if (currentItem[key] !== filter[key]) {
+                  data.status = 404;
+                  data.messageUSR = 'No se encontró el registro con los criterios exactos.';
+                  data.messageDEV = `Falla de precondición: El campo '${key}' no coincide. (DB: '${currentItem[key]}' vs Solicitud: '${filter[key]}')`;
+                  throw new Error(data.messageDEV);
+                }
+              }
+
+              // 7. =========== LÓGICA DE TOGGLE (INTERRUPTOR) ===========
+              // Lee el estado actual y lo invierte.
+              // Si currentItem.ACTIVO era 'true', newState será 'false'.
+              // Si currentItem.ACTIVO era 'false', newState será 'true'.
+              const newState = !currentItem.ACTIVO; 
+
+              // Aplica los nuevos estados invertidos
+              currentItem.ACTIVO = newState;
+              currentItem.BORRADO = !newState; // El opuesto de ACTIVO
+              currentItem.FECHAULTMOD = today();
+              currentItem.HORAULTMOD = nowHHMMSS();
+              currentItem.USUARIOMOD = bitacora.loggedUser || 'SYSTEM';
+              // =========================================================
+
+              // 8. Reemplazar el item con la versión modificada
+              const { resource: updatedItem } = await container.item(docId, partitionKey).replace(currentItem);
+              
+              // 9. (Opcional) Mensaje de respuesta dinámico
+              const message = newState ? '<<OK>> Registro Reactivado.' : '<<OK>> Borrado lógico realizado.';
+              
+              data.status = 201;
+              data.messageUSR = message; // <-- Mensaje dinámico
+              data.dataRes = updatedItem;
+              bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+              return OK(bitacora);
+            }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
     }
-
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Borrado lógico realizado.';
-    data.dataRes = JSON.parse(JSON.stringify(updated));
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
 
   } catch (error) {
     data.status     = data.status || 500;
@@ -362,8 +628,8 @@ async function DeleteOneGruposetMethod(bitacora, options = {}) {
 }
 
 // DELETE físico → 201
-async function DeleteHardGruposetMethod(bitacora, options = {}) {
-  const { paramsQuery } = options;
+async function DeleteHardGruposetMethod(bitacora, options = {}, db) {
+  const {  body } = options;
   const data = DATA();
   data.processType = bitacora.processType;
   data.process = 'Borrado físico de ZTGRUPOSET';
@@ -372,28 +638,92 @@ async function DeleteHardGruposetMethod(bitacora, options = {}) {
     data.method  = 'POST';
     data.api     = '/crud?ProcessType=DeleteHard';
 
-    const filter = buildFilter(paramsQuery);
+    if (!body || Object.keys(body).length === 0) {
+      data.status = 400;
+      data.messageUSR = 'El cuerpo (body) está vacío.';
+      data.messageDEV = 'No se recibieron datos en el body.';
+      throw new Error(data.messageDEV);
+    }
+
+    const filter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
-    for (const k of need) if (!filter[k]) {
+    for (const k of need) if (!body[k]) {
       data.status = 400;
       data.messageUSR = `Falta parámetro de llave: ${k}`;
       data.messageDEV = `Query.${k} es requerido`;
       throw new Error(data.messageDEV);
     }
 
-    const deleted = await ZTGRUPOSET.findOneAndDelete(filter);
-    if (!deleted) {
-      data.status = 404;
-      data.messageUSR = 'No se encontró registro a eliminar';
-      data.messageDEV = 'findOneAndDelete retornó null';
-      throw new Error(data.messageDEV);
-    }
+    switch (db) {
+      case 'mongodb': {
+        const deleted = await mongo.hardDelete(filter);
+        if (!deleted) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro a eliminar';
+          data.messageDEV = 'findOneAndDelete retornó null';
+          throw new Error(data.messageDEV);
+        }
 
-    data.status = 201; // POST -> 201
-    data.messageUSR = '<<OK>> Borrado físico realizado.';
-    data.dataRes = { message: 'Eliminado' };
-    bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-    return OK(bitacora);
+        data.status = 201; // POST -> 201
+        data.messageUSR = '<<OK>> Borrado físico realizado.';
+        data.dataRes = { message: 'Eliminado' };
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
+
+      case 'azure': {
+              // 1. Obtener el contenedor
+              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+
+              // 2. Obtener el filtro (usamos el body completo como filtro)
+              const filter = buildFilter(body);
+
+              // 3. Obtener 'id' y 'Partition Key'
+              const docId = filter.ID;
+              const partitionKey = filter.ID; // <-- CAMBIO 1: Clave de partición corregida a /id
+
+              if (!docId || partitionKey === undefined) {
+                throw new Error('Para borrar en Cosmos se requiere el "id" del documento y su "Partition Key".');
+              }
+
+              // 4. =========== NUEVO: VALIDACIÓN ESTRICTA ===========
+              // Leemos el item PRIMERO para validarlo
+              const { resource: currentItem } = await container.item(docId, partitionKey).read();
+
+              // 5. Manejar "No Encontrado"
+              if (!currentItem) {
+                data.status = 404;
+                data.messageUSR = 'No se encontró registro a eliminar';
+                data.messageDEV = 'Item not found in Cosmos DB';
+                throw new Error(data.messageDEV);
+              }
+
+              // 6. Comparación estricta
+              for (const key in filter) {
+                if (currentItem[key] !== filter[key]) {
+                  data.status = 404;
+                  data.messageUSR = 'No se encontró el registro con los criterios exactos.';
+                  data.messageDEV = `Falla de precondición: El campo '${key}' no coincide. (DB: '${currentItem[key]}' vs Solicitud: '${filter[key]}')`;
+                  throw new Error(data.messageDEV);
+                }
+              }
+              // =======================================================
+
+              // 7. Ejecutar borrado físico (AHORA SÍ es seguro)
+              await container.item(docId, partitionKey).delete();
+
+              // 8. Respuesta
+              data.status = 201; 
+              data.messageUSR = '<<OK>> Borrado físico en Azure Cosmos DB.';
+              data.dataRes = { message: 'Eliminado', id: docId, partitionKey: partitionKey };
+              bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+              return OK(bitacora);
+            }
+
+      default: {
+        return handleUnsupported(bitacora, data, bitacora.dbServer).result;
+      }
+    }
 
   } catch (error) {
     data.status     = data.status || 500;
