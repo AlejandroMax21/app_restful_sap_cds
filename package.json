@@ -7,6 +7,8 @@
     "@azure/cosmos": "^4.3.0",
     "@dotenvx/dotenvx": "1.51.0",
     "@sap/cds": "9",
+    "@sap/cds-dk": "9",
+    "@sap/xssec": "^4.0.0",
     "cors": "2.8.5",
     "express": "4",
     "mongoose": "8.6.2"
@@ -15,8 +17,7 @@
     "src"
   ],
   "devDependencies": {
-    "@cap-js/sqlite": "2",
-    "@sap/cds-dk": "9"
+    "@cap-js/sqlite": "2"
   },
   "scripts": {
     "start": "cds-serve",
