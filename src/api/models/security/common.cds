@@ -1,6 +1,7 @@
 namespace sec;
 
 entity AuditDetail {
+  key ID          : UUID;
   ACTIVATED       : Boolean default true;
   DELETED         : Boolean default false;
 
@@ -10,6 +11,7 @@ entity AuditDetail {
 }
 
 entity AuditDetailReg {
+  key ID          : UUID;
   // Backlink al padre de la composición
   parent   : Association to AuditDetail;
 
