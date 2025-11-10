@@ -21,8 +21,8 @@
     "start": "cds-serve",
     "dev": "cds watch",
     "bat": "my-script.bat",
-    "build": "cds build --clean && npm run bat",
-    "build-docker": "cds build --clean"
+    "build": "cds build",
+    "build-docker": "cds build"
   },
   "cds": {
     "folders": {
