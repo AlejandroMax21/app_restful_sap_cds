@@ -3,7 +3,7 @@ dotenvx.config();
 
 module.exports = {
   HOST: 'localhost' || 'NO ENCONTRE VARIABLE DE ENTORNO',
-  PORT: 3333 || 'NO ENCONTRE PORT',
+  PORT: process.env.PORT || 3333,
   API_URL: '/api/v1' || '/api/v1',
 
 
