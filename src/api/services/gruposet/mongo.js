@@ -6,16 +6,16 @@ const ZTGRUPOSET = require('../../models/mongodb/ztgruposet');
 
 // Local helper: build filter from query/body
 function buildFilter(q = {}) {
-  const f = {};
-  if (q.IDSOCIEDAD != null) f.IDSOCIEDAD = parseInt(q.IDSOCIEDAD);
-  if (q.IDCEDI     != null) f.IDCEDI     = parseInt(q.IDCEDI);
-  if (q.IDETIQUETA)         f.IDETIQUETA = String(q.IDETIQUETA);
-  if (q.IDVALOR)            f.IDVALOR    = String(q.IDVALOR);
-  if (q.IDGRUPOET)          f.IDGRUPOET  = String(q.IDGRUPOET);
-  if (q.ID)                 f.ID         = String(q.ID);
-  if (q.ACTIVO  !== undefined)  f.ACTIVO  = (q.ACTIVO  === 'true' || q.ACTIVO  === true);
-  if (q.BORRADO !== undefined)  f.BORRADO = (q.BORRADO === 'true' || q.BORRADO === true);
-  return f;
+    const f = {};
+    if (q.IDSOCIEDAD != null) f.IDSOCIEDAD = parseInt(q.IDSOCIEDAD);
+    if (q.IDCEDI != null) f.IDCEDI = parseInt(q.IDCEDI);
+    if (q.IDETIQUETA) f.IDETIQUETA = String(q.IDETIQUETA);
+    if (q.IDVALOR) f.IDVALOR = String(q.IDVALOR);
+    if (q.IDGRUPOET) f.IDGRUPOET = String(q.IDGRUPOET);
+    if (q.ID) f.ID = String(q.ID);
+    if (q.ACTIVO !== undefined) f.ACTIVO = (q.ACTIVO === 'true' || q.ACTIVO === true);
+    if (q.BORRADO !== undefined) f.BORRADO = (q.BORRADO === 'true' || q.BORRADO === true);
+    return f;
 }
 
 const hasFullKey = f =>
@@ -77,11 +77,23 @@ async function hardDelete(filter = {}) {
     return deleted;
 }
 
+// Buscar UN registro por filtro
+async function findOne(filter) {
+    try {
+        const doc = await ZTGRUPOSET.findOne(filter).lean();
+        return doc;
+    } catch (error) {
+        console.error('Error en findOne:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     get,
     create,
     update,
     logicalDelete,
     hardDelete,
-    buildFilter // export in case other modules expect it
+    buildFilter, // export in case other modules expect it
+    findOne
 };

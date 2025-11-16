@@ -362,9 +362,19 @@ async function AddManyGruposetMethod(bitacora, options = {}, db) {
     }
 
   } catch (error) {
-    data.status     = data.status || 500;
-    data.messageDEV = data.messageDEV || error.message;
-    data.messageUSR = data.messageUSR || '<<ERROR>> Alta <<NO>> exitosa.';
+    if (db === 'azure' && (error.code === 409 || (error.message && error.message.includes('Entity with the specified id already exists')))) {
+      data.status = 409;
+      data.messageUSR = 'Ya existe un registro con esos datos.';
+      data.messageDEV = 'Azure Cosmos DB conflict (409): ' + error.message;
+    } else if (db === 'mongodb' && error.code === 11000) {
+      data.status = 409;
+      data.messageUSR = 'Ya existe un registro con esos datos (llave duplicada).';
+      data.messageDEV = 'MongoDB duplicate key error (11000): ' + error.message;
+    } else {
+      data.status     = data.status || 500;
+      data.messageDEV = data.messageDEV || error.message;
+      data.messageUSR = data.messageUSR || '<<ERROR>> Alta <<NO>> exitosa.';
+    }
     data.dataRes    = data.dataRes || error;
     bitacora = AddMSG(bitacora, data, 'FAIL');
     return FAIL(bitacora);
@@ -387,16 +397,20 @@ async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
       return handleUnsupported(bitacora, data, bitacora.dbServer).result;
     }
 
-    const filter = buildFilter(body);
+    // 🟢 PASO 1: Validar que vengan las llaves ORIGINALES (para identificar el registro a actualizar)
+    const originalFilter = buildFilter(body);
     const need = ['IDSOCIEDAD','IDCEDI','IDETIQUETA','IDVALOR','IDGRUPOET','ID'];
-    for (const k of need) if (!filter[k]) {
-      data.status = 400;
-      data.messageUSR = `Falta parámetro de llave: ${k}`;
-      data.messageDEV = `Query.${k} es requerido`;
-      throw new Error(data.messageDEV);
+    for (const k of need) {
+      if (originalFilter[k] === undefined || originalFilter[k] === null) {
+        data.status = 400;
+        data.messageUSR = `Falta parámetro de llave original: ${k}`;
+        data.messageDEV = `Body.${k} es requerido para identificar el registro`;
+        throw new Error(data.messageDEV);
+      }
     }
 
-    const changes = (body?.data && !Array.isArray(body.data)) ? body.data : body;
+    // 🟢 PASO 2: Obtener los cambios propuestos
+    const changes = (body?.data && !Array.isArray(body.data)) ? body.data : {};
     if (!changes || typeof changes !== 'object') {
       data.status = 400;
       data.messageUSR = 'Falta body.data con cambios';
@@ -404,13 +418,45 @@ async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
       throw new Error(data.messageDEV);
     }
 
+    // 🟢 PASO 3: Construir la NUEVA llave compuesta (con los cambios propuestos)
+    const newKey = {
+      IDSOCIEDAD: changes.IDSOCIEDAD !== undefined ? parseInt(changes.IDSOCIEDAD) : originalFilter.IDSOCIEDAD,
+      IDCEDI:     changes.IDCEDI     !== undefined ? parseInt(changes.IDCEDI)     : originalFilter.IDCEDI,
+      IDETIQUETA: changes.IDETIQUETA !== undefined ? String(changes.IDETIQUETA)   : originalFilter.IDETIQUETA,
+      IDVALOR:    changes.IDVALOR    !== undefined ? String(changes.IDVALOR)      : originalFilter.IDVALOR,
+      IDGRUPOET:  changes.IDGRUPOET  !== undefined ? String(changes.IDGRUPOET)    : originalFilter.IDGRUPOET,
+      ID:         changes.ID         !== undefined ? String(changes.ID)           : originalFilter.ID
+    };
+
+    // 🟢 PASO 4: Verificar si la nueva llave es DIFERENTE a la original
+    const keyChanged = 
+      newKey.IDSOCIEDAD !== originalFilter.IDSOCIEDAD ||
+      newKey.IDCEDI     !== originalFilter.IDCEDI ||
+      newKey.IDETIQUETA !== originalFilter.IDETIQUETA ||
+      newKey.IDVALOR    !== originalFilter.IDVALOR ||
+      newKey.IDGRUPOET  !== originalFilter.IDGRUPOET ||
+      newKey.ID         !== originalFilter.ID;
+
+    // Agregar campos de auditoría
     changes.FECHAULTMOD = today();
     changes.HORAULTMOD  = nowHHMMSS();
     changes.USUARIOMOD  = bitacora.loggedUser || 'SYSTEM';
 
     switch (db) {
       case 'mongodb': {
-        const updated = await mongo.update(filter, changes);
+        // 🟢 PASO 5: Si cambió la llave, verificar que NO exista duplicado
+        if (keyChanged) {
+          const duplicate = await mongo.findOne(newKey);
+          if (duplicate) {
+            data.status = 409; // Conflict
+            data.messageUSR = 'Ya existe un registro con esos datos (llave duplicada)';
+            data.messageDEV = `Duplicate key: ${JSON.stringify(newKey)}`;
+            throw new Error(data.messageDEV);
+          }
+        }
+
+        // 🟢 PASO 6: Actualizar el registro
+        const updated = await mongo.update(originalFilter, changes);
         if (!updated) {
           data.status = 404;
           data.messageUSR = 'No se encontró registro a actualizar';
@@ -418,7 +464,7 @@ async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
           throw new Error(data.messageDEV);
         }
 
-        data.status = 201; // POST -> 201
+        data.status = 201;
         data.messageUSR = '<<OK>> Actualización realizada.';
         data.dataRes = JSON.parse(JSON.stringify(updated));
         bitacora = AddMSG(bitacora, data, 'OK', 201, true);
@@ -426,60 +472,59 @@ async function UpdateOneGruposetMethod(bitacora, options = {}, db) {
       }
 
       case 'azure': {
-              // 1. Obtener el contenedor (Igual)
-              const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
+        const container = connectToAzureCosmosDB(dotenvXConfig.COSMOSDB_CONTAINER);
 
-              // 2. Obtener el filtro (Igual)
-              // filter = { IDSOCIEDAD: 1005, IDCEDI: 1006, IDETIQUETA: "ETIQUETA JESUS", ... }
-              const filter = buildFilter(body); 
+        // Obtener documento original
+        const docId = originalFilter.ID;
+        const partitionKey = originalFilter.ID;
 
-              // 3. Obtener llaves (Igual)
-              const docId = filter.ID;
-              const partitionKey = filter.ID; // Usando /id como clave de partición
+        if (!docId || partitionKey === undefined) {
+          throw new Error('Se requiere el "id" del documento y su "Partition Key".');
+        }
 
-              if (!docId || partitionKey === undefined) {
-                throw new Error('Se requiere el "id" del documento y su "Partition Key".');
-              }
+        const { resource: currentItem } = await container.item(docId, partitionKey).read();
 
-              // 4. Leer el item (Igual)
-              const { resource: currentItem } = await container.item(docId, partitionKey).read();
+        if (!currentItem) {
+          data.status = 404;
+          data.messageUSR = 'No se encontró registro a actualizar';
+          data.messageDEV = 'Item not found in Cosmos DB';
+          throw new Error(data.messageDEV);
+        }
 
-              // 5. Manejar "No Encontrado" (Igual)
-              if (!currentItem) {
-                data.status = 404;
-                data.messageUSR = 'No se encontró registro a actualizar';
-                data.messageDEV = 'Item not found in Cosmos DB';
-                throw new Error(data.messageDEV);
-              }
+        // Validación estricta de llave original
+        for (const key in originalFilter) {
+          if (currentItem[key] !== originalFilter[key]) {
+            data.status = 404;
+            data.messageUSR = 'No se encontró el registro con los criterios exactos.';
+            data.messageDEV = `Falla de precondición: El campo '${key}' no coincide. (DB: '${currentItem[key]}' vs Solicitud: '${originalFilter[key]}')`;
+            throw new Error(data.messageDEV);
+          }
+        }
 
-              // 6. =========== NUEVO: VALIDACIÓN ESTRICTA ===========
-              // Comparamos todos los campos del filtro contra el documento de la BD
-              for (const key in filter) {
-                // Comparamos los valores
-                // Tu buildFilter ya convierte los tipos (parseInt, String), 
-                // así que la comparación (===) debería ser segura.
-                if (currentItem[key] !== filter[key]) {
-                  data.status = 404; // 404 (No encontrado) o 412 (Falla de precondición)
-                  data.messageUSR = 'No se encontró el registro con los criterios exactos.';
-                  data.messageDEV = `Falla de precondición: El campo '${key}' no coincide. (DB: '${currentItem[key]}' vs Solicitud: '${filter[key]}')`;
-                  throw new Error(data.messageDEV);
-                }
-              }
-              // =======================================================
+        // 🟢 PASO 5: Si cambió la llave, verificar duplicados en Azure
+        if (keyChanged) {
+          const querySpec = buildCosmosQuery(newKey);
+          const { resources } = await container.items.query(querySpec).fetchAll();
+          
+          if (resources.length > 0) {
+            data.status = 409; // Conflict
+            data.messageUSR = 'Ya existe un registro con esos datos (llave duplicada)';
+            data.messageDEV = `Duplicate key: ${JSON.stringify(newKey)}`;
+            throw new Error(data.messageDEV);
+          }
+        }
 
-              // 7. Fusionar cambios (Igual)
-              const itemToUpdate = { ...currentItem, ...changes };
+        // 🟢 PASO 6: Aplicar cambios
+        const itemToUpdate = { ...currentItem, ...changes };
 
-              // 8. Reemplazar item (Igual)
-              const { resource: updatedItem } = await container.item(docId, partitionKey).replace(itemToUpdate);
+        const { resource: updatedItem } = await container.item(docId, partitionKey).replace(itemToUpdate);
 
-              // 9. Devolver respuesta (Igual)
-              data.status = 201;
-              data.messageUSR = '<<OK>> Actualización realizada en Azure Cosmos DB.';
-              data.dataRes = updatedItem;
-              bitacora = AddMSG(bitacora, data, 'OK', 201, true);
-              return OK(bitacora);
-            }
+        data.status = 201;
+        data.messageUSR = '<<OK>> Actualización realizada en Azure Cosmos DB.';
+        data.dataRes = updatedItem;
+        bitacora = AddMSG(bitacora, data, 'OK', 201, true);
+        return OK(bitacora);
+      }
 
       default: {
         return handleUnsupported(bitacora, data, bitacora.dbServer).result;
